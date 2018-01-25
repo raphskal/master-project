@@ -22,24 +22,40 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sncosmo.utils import Result, Interp1D, ppf
 
 class MI_model(object):
+    """
+    Constructs a model that consists of n-sncosmo models in order to represent 
+    a n-imaged supernova. This is used for the nestlefit.
+    """
     def __init__(self, model, n):
+    """
+    Initializes the MI_model
+    
+    Parameters
+    ----------
+    model: the sncosmo-model that is used for the multiple images
+    n: number of images
+    
+    returns: MI_model containing n sncosmo-models
+    """
         self.nimg = n
         model = copy.copy(model)
         self.models = []
-        """
-        self.t0 = np.full((n),model.get('t0'))
-        self.lensebv = np.full((n),model.get('lensebv'))
-        self.lensrv = np.full((n),model.get('lensr_v'))
-        self.hostebv = model.get('hostebv')
-        self.hostrv = model.get('hostr_v')
-        self.amplitude = np.full((n),model.get('amplitude'))
-        """
+        
         for i in range(n):
             self.models.append(copy.copy(model))
         
         self.param_names = self._get_parameters()
             
     def _get_parameters(self):
+        """
+        Gets the parameter names of the MI_model
+        
+        Parameters
+        ----------
+        self : this model
+        
+        returns : all parameters used in this model
+        """
         params = ['hostr_v','hostebv','s']
         for i in range(self.nimg):
             params.append('amplitude'+str(i+1))
@@ -49,19 +65,46 @@ class MI_model(object):
         return params
         
     def _get_values(self):
+        """
+        Gets the parameter values of the MI_model
+        
+        Parameters
+        ----------
+        self : this model
+        
+        returns : all parameter values used in this model
+        """
         values = []
         for name in self.param_names:
             values.append(self.get(name))
         return values
             
     def get(self, name):
+        """
+        Gets the value of a specific parameter
+        
+        Parameters
+        ----------
+        self : this model
+        name :  parameter that value is required
+        
+        returns :  value parameter value 'name'
+        """
         if name[0] == 'h' or name == 's':
             return self.models[0].get(name)
         else:
             return self.models[int(name[-1])-1].get(name[:-1])
             
     def set(self, name, value):
-        #print name,value
+        """
+        Sets the value of a specific parameter
+        
+        Parameters
+        ----------
+        self : this model
+        name :  parameter value that is to be changed
+        
+        """
         if name[0] == 'h' or name == 's':
             for i in range(self.nimg):
                 self.models[i].update({name:value})
@@ -69,6 +112,17 @@ class MI_model(object):
             self.models[int(name[-1])-1].update({name[0:-1]:value})
             
     def plot(self,data, zp=25., zpsys='ab', ncol=2):
+        """
+        Plots the data for all bands
+        
+        Parameters
+        ----------
+        self : this model
+        data : photometric data
+        
+        returns : Visualization of the photometric data and this model
+        in 16geu_nestfit.jpg
+        """
         
         all_bands = list(set(data['band']))
         nbands = len(all_bands)
@@ -189,6 +243,18 @@ class MI_model(object):
         
 
     def chisq(self,data):
+        """
+        Calculates the chisquare of this model and the data. imid (=imageid)
+        is used to distinguish between ground (=0) where the sum of the fluxes 
+        matter and space (=1,..,4) where we can use the individual fluxes
+        
+        Parameters
+        -----------
+        self : this model
+        data : photometric data
+        
+        returns chisquare of data and model
+        """
             chi2 = 0.
             for imid in range(self.nimg+1):
                 mask = data['imageid'] == imid
