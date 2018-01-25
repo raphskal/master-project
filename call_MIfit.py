@@ -120,6 +120,7 @@ mH.set(t0=it0)
 
 ##############################################################################
 if __name__ == '__main__':
+    # The parameters that are varied in the fit
     fit_param = ['s','hostebv','hostr_v',
     't01','t02','t03','t04',
     'lensr_v1','lensr_v2','lensr_v3','lensr_v4',
@@ -137,6 +138,8 @@ if __name__ == '__main__':
                   'amplitude1': (1.e-9,1.e-7), 'amplitude2': (1.e-9,1.e-7),
                   'amplitude3': (1.e-9,1.e-7), 'amplitude4': (1.e-10,1.e-8),
                   'lensr_v':(1.0,4.0)} 
+    # Set the initial model, construct a MI_model with it and start the 
+    # nestlefit. Save the parameters in 'nestfitparam.dat' and plot the model
     mH.set(amplitude=3.e-8,hostebv=0.1,hostr_v=1.8,lensr_v=2.0)
     MI_mH = MI_model(mH,4)
     model = nest_lc(phot_d,MI_mH,fit_param,fit_bounds)
