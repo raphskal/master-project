@@ -27,16 +27,16 @@ class MI_model(object):
     a n-imaged supernova. This is used for the nestlefit.
     """
     def __init__(self, model, n):
-    """
-    Initializes the MI_model
+        """
+        Initializes the MI_model
     
-    Parameters
-    ----------
-    model: the sncosmo-model that is used for the multiple images
-    n: number of images
+        Parameters
+        ----------
+        model: the sncosmo-model that is used for the multiple images
+        n: number of images
     
-    returns: MI_model containing n sncosmo-models
-    """
+        returns: MI_model containing n sncosmo-models
+        """
         self.nimg = n
         model = copy.copy(model)
         self.models = []
@@ -243,18 +243,18 @@ class MI_model(object):
         
 
     def chisq(self,data):
-        """
-        Calculates the chisquare of this model and the data. imid (=imageid)
-        is used to distinguish between ground (=0) where the sum of the fluxes 
-        matter and space (=1,..,4) where we can use the individual fluxes
+            """
+            Calculates the chisquare of this model and the data. imid (=imageid)
+            is used to distinguish between ground (=0) where the sum of the fluxes 
+            matter and space (=1,..,4) where we can use the individual fluxes
         
-        Parameters
-        -----------
-        self : this model
-        data : photometric data
+            Parameters
+            -----------
+            self : this model
+            data : photometric data
         
-        returns chisquare of data and model
-        """
+            returns chisquare of data and model
+            """
             chi2 = 0.
             for imid in range(self.nimg+1):
                 mask = data['imageid'] == imid
