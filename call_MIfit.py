@@ -1,11 +1,19 @@
 # -*- coding: utf-8 -*-
 """
+This Program reads the fitted data from files, masks it and starts the fitting
+in MI_nestlefit.py
+
+
 Created on Tue Jan 23 10:40:53 2018
 
 @author: kalender
 """
 from __future__ import absolute_import
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from custom_source import sn16geu
 from astropy.table import vstack
 from astropy.io import ascii
 from MI_nestlefit import MI_model, nest_lc
@@ -13,7 +21,7 @@ import sncosmo
 import os
 import copy
 import filters
-import matplotlib.pyplot as plt
+
 from scipy.stats import chi2
 from scipy.integrate import quad
 phot_d = None
@@ -48,8 +56,10 @@ lcfname = { # the names of the data files
     'f390w' : 'lightcurve_f390w_b00_fitalljoint.csv',
     'f475w' : 'lightcurve_f475w_b00_fitalljoint.csv'
 }
-# These are the bands that are cosidered!
+# These are the bands that are cosidered, use these for hsiao-stretch!
 for n,band in enumerate(['f625w','f814w','f390w','f475w','f160w']) :
+# And these for the custom sn16geu source
+#for n,band in enumerate(['f625w','f814w','f160w']) :
 #for n,band in enumerate(['f625w']) :  
     fname = lcfname[band]                                    
     c = ascii.read(os.path.join('photometry/lightcurve',fname))
@@ -95,7 +105,7 @@ for n,band in enumerate(['f625w','f814w','f390w','f475w','f160w']) :
         else:
             phot_d = vstack([phot_d,c])
 # Set redshift, initial t0 and MW extinction
-z,lensz,it0 = 0.409,0.216,57653.2
+z,lensz,it0 = 0.409,0.216,57651.2
 
 # Galactic dust model, assuming that the photometry has not been
 # corrected for MW extinction.
@@ -117,34 +127,50 @@ ref = copy.copy(mH)
 mH.set(mwr_v=3.1)
 mH.set(z=z,lensz=lensz)
 mH.set(t0=it0)
+# Set the initial model, construct a MI_model with it
+mH.set(amplitude=3.e-8,hostebv=0.1,hostr_v=1.4,lensr_v=2.0)
+
+
+# Setup model based on SNoopy fir for 16geu 
+geu_source = sn16geu(it0,1.e+9)
 
 ##############################################################################
 if __name__ == '__main__':
     # The parameters that are varied in the fit
     fit_param = ['s','hostebv','hostr_v',
     't01','t02','t03','t04',
-    'lensr_v1','lensr_v2','lensr_v3','lensr_v4',
+    'lensr_v',
     'lensebv1','lensebv2','lensebv3','lensebv4',
     'amplitude1','amplitude2','amplitude3','amplitude4']
     
+    # With the custom sn16geu-model, we are unable to fit for the extinction    
+    fit_param_16geu = ['s',
+    't01','t02','t03','t04',
+    'amplitude1','amplitude2','amplitude3','amplitude4']
+    
     # the bounds for the fitting parameters
-    fit_bounds = {'t01':(it0-5.,it0+5),'t02':(it0-5.,it0+5.),
-                  't03':(it0-5.,it0+5),'t04':(it0-5.,it0+5),
-                  's':(0.9,1.1),'hostebv':(-0.2,1.0),'hostr_v':(1.0,3.0),
-                  'lensr_v1':(1.0,3.0),'lensr_v2':(1.0,3.0),
-                  'lensr_v3':(1.0,3.0),'lensr_v4':(1.0,3.0),
-                  'lensebv1': (-0.2,1.5), 'lensebv2': (-0.2,1.5), 
-                  'lensebv3': (-0.2,1.5), 'lensebv4': (-0.2,1.5),
+    fit_bounds = {'t01':(it0-2.,it0+2),'t02':(2.,+2.),
+                  't03':(-2.,+2),'t04':(-2.,+2),
+                  's':(0.95,1.05),'hostebv':(0.2,1.0),'hostr_v':(1.0,3.0),
+                  'lensebv1': (0.2,1.0), 'lensebv2': (0.2,1.0), 
+                  'lensebv3': (0.2,1.0), 'lensebv4': (0.2,1.0),
+                  #'amplitude1': (1.e+7,1.e+10), 'amplitude2': (1.e+7,1.e+10),
+                  #'amplitude3': (1.e+7,1.e+10), 'amplitude4': (1.e+6,1.e+9)}
                   'amplitude1': (1.e-9,1.e-7), 'amplitude2': (1.e-9,1.e-7),
                   'amplitude3': (1.e-9,1.e-7), 'amplitude4': (1.e-10,1.e-8),
-                  'lensr_v':(1.0,4.0)} 
-    # Set the initial model, construct a MI_model with it and start the 
-    # nestlefit. Save the parameters in 'nestfitparam.dat' and plot the model
-    mH.set(amplitude=3.e-8,hostebv=0.1,hostr_v=1.8,lensr_v=2.0)
+                  'lensr_v':(1.0,3.0)} 
+ 
+    # Start the nestlefit with the hsiao-stretch or the custom_model
+    # Save the parameters in 'nestfitparam.dat' and plot the model
+
     MI_mH = MI_model(mH,4)
-    model = nest_lc(phot_d,MI_mH,fit_param,fit_bounds)
+    model, res = nest_lc(phot_d,MI_mH,fit_param,fit_bounds,maxcall=1e+5)
+    #MI_geu_source = MI_model(geu_source,4)
+    #model,res = nest_lc(phot_d,MI_geu_source,fit_param_16geu,fit_bounds)
+    
+    
     myfile = open('nestfitparam.dat','w')
     for name in fit_param:
-        myfile.write(name+' = '+str(model.get(name)))
+        myfile.write(name+' = '+str(model.get(name))+' ('+str(res.errors[name])+')\n')
     myfile.close()
     model.plot(phot_d)
