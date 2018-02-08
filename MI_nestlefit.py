@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """
+This prorgram sets up a n-img model for the given input source. This can then
+be fitted using the nest_lc() function.
+
 Created on Tue Jan 23 09:58:58 2018
 
 @author: kalender
 """
 from __future__ import absolute_import
 import copy
+import sncosmo
 import time
 import matplotlib
 matplotlib.use('Agg')
@@ -56,12 +60,18 @@ class MI_model(object):
         
         returns : all parameters used in this model
         """
-        params = ['hostr_v','hostebv','s']
-        for i in range(self.nimg):
-            params.append('amplitude'+str(i+1))
-            params.append('t0'+str(i+1))
-            params.append('lensr_v'+str(i+1))
-            params.append('lensebv'+str(i+1))
+        if not type(self.models[0]) is sncosmo.models.Model:
+            if self.models[0].name == 'sn16geu':
+                params = ['s']
+                for i in range(self.nimg):
+                    params.append('amplitude'+str(i+1))
+                    params.append('t0'+str(i+1))
+        else:
+            params = ['hostr_v','hostebv','s','lensr_v']
+            for i in range(self.nimg):
+                params.append('amplitude'+str(i+1))
+                params.append('t0'+str(i+1))
+                params.append('lensebv'+str(i+1))
         return params
         
     def _get_values(self):
@@ -90,8 +100,13 @@ class MI_model(object):
         
         returns :  value parameter value 'name'
         """
-        if name[0] == 'h' or name == 's':
+        if name[0] == 'h' or name == 's' or name == 'lensr_v':
             return self.models[0].get(name)
+        elif name[0] =='t':
+            if name[-1] == '1':
+                return self.models[0].get(name[:-1])
+            else:
+                return self.models[int(name[-1])-1].get(name[:-1])-self.models[0].get(name[:-1])
         else:
             return self.models[int(name[-1])-1].get(name[:-1])
             
@@ -105,11 +120,18 @@ class MI_model(object):
         name :  parameter value that is to be changed
         
         """
-        if name[0] == 'h' or name == 's':
+        if name[0] == 'h' or name == 's' or name == 'lensr_v':
             for i in range(self.nimg):
                 self.models[i].update({name:value})
+        elif name[0] == 't':
+            if name[-1] == '1':
+                self.models[0].update({name[0:-1]:value})
+                for i in range(1,self.nimg):
+                    self.models[i].update({name[:-1]:value+self.get(name)})
+            else:
+                self.models[int(name[-1])-1].update({name[:-1]:value+self.get('t01')})
         else:
-            self.models[int(name[-1])-1].update({name[0:-1]:value})
+            self.models[int(name[-1])-1].update({name[:-1]:value})
             
     def plot(self,data, zp=25., zpsys='ab', ncol=2):
         """
@@ -278,7 +300,6 @@ class MI_model(object):
                     print "OOPS"
                     
                 diff = d.flux - model_flux
-                
                 # is this going to work when we are masking?
                 cov = np.diag(d.fluxerr**2) if d.fluxcov is None else d.fluxcov            
                 invcov = np.linalg.inv(cov)            
@@ -418,7 +439,7 @@ def nest_lc(data, model, vparam_names, bounds, guess_amplitude_bound=False,
 
     # Order vparam_names the same way it is ordered in the model:
     vparam_names = [s for s in model.param_names if s in vparam_names]
-    print vparam_names
+
     """
     # Drop data that the model doesn't cover.
     fitdata, data_mask = cut_bands(data, model,
@@ -509,23 +530,25 @@ def nest_lc(data, model, vparam_names, bounds, guess_amplitude_bound=False,
         #model.parameters[idx] = parameters
         return -0.5 * model.chisq(data)
 
-    t0 = time.time()
     res = nestle.sample(loglike, prior_transform, ndim, npdim=npdim,
                         npoints=npoints, method=method, maxiter=maxiter,
                         maxcall=maxcall, rstate=rstate,
                         callback=(nestle.print_progress if verbose else None))
-    """
+    
+    
+    
     # estimate parameters and covariance from samples
     vparameters, cov = nestle.mean_and_cov(res.samples, res.weights)
+    print vparam_names,vparameters
     # update model parameters to estimated ones.
     for i, name in enumerate(vparam_names):
         model.set(name,vparameters[i])
-    
+    """
     # If we need to, unsort the mask so mask applies to input data
     if sortidx is not None: 
         unsort_idx = np.argsort(sortidx)  # indicies that will unsort array
         data_mask = data_mask[unsort_idx]
-    
+    """
     # `res` is a nestle.Result object. Collect result into a sncosmo.Result
     # object for consistency, and add more fields.
     res = Result(niter=res.niter,
@@ -540,7 +563,6 @@ def nest_lc(data, model, vparam_names, bounds, guess_amplitude_bound=False,
                  vparam_names=copy.copy(vparam_names),
                  ndof=len(data) - len(vparam_names),
                  bounds=bounds,
-                 time=elapsed,
                  parameters=model._get_values(),
                  covariance=cov,
                  errors=OrderedDict(zip(vparam_names,
@@ -548,7 +570,7 @@ def nest_lc(data, model, vparam_names, bounds, guess_amplitude_bound=False,
                  param_dict=OrderedDict(zip(model.param_names,
                                             model._get_values())),
                )
-    
+   
     # Deprecated result fields.
     depmsg = ("The `param_names` attribute is deprecated in sncosmo v1.0 "
               "and will be removed in sncosmo v2.0."
@@ -559,5 +581,5 @@ def nest_lc(data, model, vparam_names, bounds, guess_amplitude_bound=False,
               "and will be changed in sncosmo v2.0."
               "Use `logvol` instead.")
     #res.__dict__['deprecated']['logprior'] = (res.logvol, depmsg)
-    """
-    return model
+    
+    return model, res
