@@ -131,16 +131,16 @@ mH.set(t0=it0)
 mH.set(amplitude=3.e-8,hostebv=0.1,hostr_v=1.4,lensr_v=2.0)
 
 
-# Setup model based on SNoopy fir for 16geu 
-geu_source = sn16geu(it0,1.e+9)
+# Setup model based on SNoopy fit for 16geu 
+#geu_source = sn16geu(it0,1.e+9)
 
 ##############################################################################
 if __name__ == '__main__':
     # The parameters that are varied in the fit
     fit_param = ['s','hostebv','hostr_v',
     't01','t02','t03','t04',
-    'lensr_v',
-    'lensebv1','lensebv2','lensebv3','lensebv4',
+    'lensr_v','lensr_v1','f',
+    'lensebv2','lensebv3','lensebv4',
     'amplitude1','amplitude2','amplitude3','amplitude4']
     
     # With the custom sn16geu-model, we are unable to fit for the extinction    
@@ -149,28 +149,52 @@ if __name__ == '__main__':
     'amplitude1','amplitude2','amplitude3','amplitude4']
     
     # the bounds for the fitting parameters
-    fit_bounds = {'t01':(it0-2.,it0+2),'t02':(2.,+2.),
-                  't03':(-2.,+2),'t04':(-2.,+2),
-                  's':(0.95,1.05),'hostebv':(0.2,1.0),'hostr_v':(1.0,3.0),
-                  'lensebv1': (0.2,1.0), 'lensebv2': (0.2,1.0), 
-                  'lensebv3': (0.2,1.0), 'lensebv4': (0.2,1.0),
+    fit_bounds = {'t01':(it0-2.,it0+2),'t02':(-3,+3),
+                  't03':(-3.,+3),'t04':(-3,+3),
+                  's':(0.95,1.05),'hostebv':(0.0,1.0),'hostr_v':(1.0,3.0),
+                  'lensebv1': (0.0,1.0), 'lensebv2': (0.0,1.0), 
+                  'lensebv3': (0.0,1.0), 'lensebv4': (0.0,1.0),
                   #'amplitude1': (1.e+7,1.e+10), 'amplitude2': (1.e+7,1.e+10),
                   #'amplitude3': (1.e+7,1.e+10), 'amplitude4': (1.e+6,1.e+9)}
                   'amplitude1': (1.e-9,1.e-7), 'amplitude2': (1.e-9,1.e-7),
                   'amplitude3': (1.e-9,1.e-7), 'amplitude4': (1.e-10,1.e-8),
-                  'lensr_v':(1.0,3.0)} 
+                  'lensr_v':(1.0,3.0), 'f':(1.4,2.0), 'lensr_v1':(1.0,3.0)} 
  
     # Start the nestlefit with the hsiao-stretch or the custom_model
     # Save the parameters in 'nestfitparam.dat' and plot the model
 
-    MI_mH = MI_model(mH,4)
-    model, res = nest_lc(phot_d,MI_mH,fit_param,fit_bounds,maxcall=1e+5)
+    MI_mH = MI_model(mH,4,f=1.7,useprior=True, samerv=False)
+    model, res = nest_lc(phot_d,MI_mH,fit_param,fit_bounds)
     #MI_geu_source = MI_model(geu_source,4)
     #model,res = nest_lc(phot_d,MI_geu_source,fit_param_16geu,fit_bounds)
     
+    for i, name in enumerate(res.vparam_names):
+        values = res.samples[:,i]
+        plt.plot(np.linspace(0,len(values),num=len(values)),values)
+        plt.ylabel(name)
+        plt.xlabel('sample')
+        plt.savefig('plots/'+name+'_samples.png')
+        plt.close()
     
+    
+    df = res.ndof
+    fmin = res.h
+    x = np.linspace(chi2.ppf(0.01, df), chi2.ppf(0.99, df), 100)
+    pdf = chi2.pdf(x, df)
+    prob = quad(chi2.pdf,fmin,np.Infinity,args=(df,))[0]
+    plt.plot(x, pdf)
+    plt.fill_between(x,0.,pdf, where=x>=fmin,alpha=0.5)
+    plt.text(fmin,pdf[5],str(prob))
+    plt.title('$chi^2$ pdf, df='+str(df))
+    plt.plot()
+    plt.savefig('chi2_pdf.png')
+    plt.close()
+    
+    totamp, sigmamp = model.plot(phot_d)
     myfile = open('nestfitparam.dat','w')
     for name in fit_param:
         myfile.write(name+' = '+str(model.get(name))+' ('+str(res.errors[name])+')\n')
+    myfile.write("chiqsquare = "+str(fmin)+'\n')
+    myfile.write("tot_amp = "+str(totamp)+' ('+str(sigmamp)+')')
     myfile.close()
-    model.plot(phot_d)
+    
