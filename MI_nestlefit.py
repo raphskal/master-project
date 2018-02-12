@@ -30,7 +30,7 @@ class MI_model(object):
     Constructs a model that consists of n-sncosmo models in order to represent 
     a n-imaged supernova. This is used for the nestlefit.
     """
-    def __init__(self, model, n):
+    def __init__(self, model, n,f=1.0,useprior=False, samerv=True):
         """
         Initializes the MI_model
     
@@ -44,6 +44,10 @@ class MI_model(object):
         self.nimg = n
         model = copy.copy(model)
         self.models = []
+        self.f = f
+        self.useprior = useprior
+        self.samerv = samerv
+        
         
         for i in range(n):
             self.models.append(copy.copy(model))
@@ -62,12 +66,15 @@ class MI_model(object):
         """
         if not type(self.models[0]) is sncosmo.models.Model:
             if self.models[0].name == 'sn16geu':
-                params = ['s']
+                params = ['f','s']
                 for i in range(self.nimg):
                     params.append('amplitude'+str(i+1))
                     params.append('t0'+str(i+1))
         else:
-            params = ['hostr_v','hostebv','s','lensr_v']
+            if self.samerv:
+                params = ['f','hostr_v','hostebv','s','lensr_v']
+            else:
+                params = ['f','hostr_v','hostebv','s','lensr_v','lensr_v1']
             for i in range(self.nimg):
                 params.append('amplitude'+str(i+1))
                 params.append('t0'+str(i+1))
@@ -100,8 +107,12 @@ class MI_model(object):
         
         returns :  value parameter value 'name'
         """
-        if name[0] == 'h' or name == 's' or name == 'lensr_v':
-            return self.models[0].get(name)
+        if name == 'f':
+            return self.f
+        elif name == 'lensr_v1':
+            return self.models[0].get(name[:-1])
+        elif name[0] == 'h' or name == 's' or name == 'lensr_v':
+                return self.models[1].get(name)
         elif name[0] =='t':
             if name[-1] == '1':
                 return self.models[0].get(name[:-1])
@@ -120,9 +131,18 @@ class MI_model(object):
         name :  parameter value that is to be changed
         
         """
-        if name[0] == 'h' or name == 's' or name == 'lensr_v':
+        if name == 'f':
+            self.f = value
+        elif name == 'lensr_v1':
+            self.models[0].update({name[:-1]:value})
+        elif name == 'lensr_v' and not self.samerv:
+            for i in range(1,self.nimg):
+                self.models[i].update({name:value})
+        elif name[0] == 'h' or name == 's' or (name == 'lensr_v' and self.samerv):
             for i in range(self.nimg):
                 self.models[i].update({name:value})
+            if name == 'hostebv' and self.useprior:
+                self.models[0].update({'lensebv':value/self.f})
         elif name[0] == 't':
             if name[-1] == '1':
                 self.models[0].update({name[0:-1]:value})
@@ -132,6 +152,17 @@ class MI_model(object):
                 self.models[int(name[-1])-1].update({name[:-1]:value+self.get('t01')})
         else:
             self.models[int(name[-1])-1].update({name[:-1]:value})
+            
+    def cleanmax(self,band,t,zp,zpsys):
+        ref = copy.copy(self.models[0])
+        ref.set(hostebv=0.,lensebv=0.0,mwebv=0.)
+        return np.max(ref.bandflux(band,t,zp=zp,zpsys=zpsys))
+    
+    def physmax(self,band,t,zp,zpsys):
+        ref = copy.copy(self.models[0])
+        ref.set_source_peakabsmag(-19.3,'bessellb',zpsys)
+        ref.set(hostebv=0.,lensebv=0.0,mwebv=0.)
+        return np.max(ref.bandflux(band,t,zp=zp,zpsys=zpsys))
             
     def plot(self,data, zp=25., zpsys='ab', ncol=2):
         """
@@ -162,6 +193,9 @@ class MI_model(object):
         #totmag=0.
         #mag_array,i = np.zeros(len(ground)),0
         tgrid = np.linspace(tmin,tmax,300)
+        totmag=0.
+        mag_array,i = np.zeros(len(ground)),0
+        tgrid = np.linspace(tmin,tmax,300)
         marker = ['.','o','s','d','^']
         color  = ['k','c','m','g','b']
         for n,band in enumerate(all_bands):
@@ -178,10 +212,10 @@ class MI_model(object):
 
                 if n > 0:
                     model_flux = self.models[n-1].bandflux(band, tgrid, zp=zp, zpsys=zpsys)
-                    #if band in ground:
-                        #varmag = self.cleanmax(band,tgrid,zp,zpsys)*magn[n-1]*lensing[n-1]/self.physmax(band,tgrid,zp,zpsys)
-                        #totmag += varmag
-                        #mag_array[i] += varmag
+                    if band in ground:
+                        varmag = self.cleanmax(band,tgrid,zp,zpsys)/self.physmax(band,tgrid,zp,zpsys)
+                        totmag += varmag
+                        mag_array[i] += varmag
                     if sum_model_flux is None:
                         sum_model_flux = model_flux
                     else:
@@ -235,8 +269,8 @@ class MI_model(object):
                     sigma = np.sum(((d.flux-var(d.time))/d.fluxerr)**2)/(len(d.time))
                 ax.plot(tgrid,sum_model_flux,color=color[0],ls='-')
             
-            #if band in ground: 
-            #    i += 1
+            if band in ground: 
+                i += 1
                 
             ax.set_title(band)
             ax.set_xlim((tmin,tmax))
@@ -259,8 +293,10 @@ class MI_model(object):
         fig.savefig('16geu_nestfit.png')
         plt.close()
         
-        #mean =  totmag/len(ground)
-        #sigmag = np.sqrt(np.sum((mag_array-mean)**2)/(len(ground)-1))
+        mean =  totmag/len(ground)
+        sigmag = np.sqrt(np.sum((mag_array-mean)**2)/(len(ground)-1))
+        
+        return mean,sigmag
         
         
 
@@ -439,6 +475,10 @@ def nest_lc(data, model, vparam_names, bounds, guess_amplitude_bound=False,
 
     # Order vparam_names the same way it is ordered in the model:
     vparam_names = [s for s in model.param_names if s in vparam_names]
+    
+    if 'lensebv1' in vparam_names and model.useprior:
+        print 'Cannot fit for lensebv1 when prior is applied!'
+        quit()
 
     """
     # Drop data that the model doesn't cover.
