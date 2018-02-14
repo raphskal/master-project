@@ -19,6 +19,7 @@ from astropy.io import ascii
 from MI_nestlefit import MI_model, nest_lc
 import sncosmo
 import os
+import corner
 import copy
 import filters
 
@@ -128,7 +129,7 @@ mH.set(mwr_v=3.1)
 mH.set(z=z,lensz=lensz)
 mH.set(t0=it0)
 # Set the initial model, construct a MI_model with it
-mH.set(amplitude=3.e-8,hostebv=0.1,hostr_v=1.4,lensr_v=2.0)
+mH.set(amplitude=3.e-8,hostebv=0.1,hostr_v=1.4,lensr_v=5.0)
 
 
 # Setup model based on SNoopy fit for 16geu 
@@ -152,13 +153,13 @@ if __name__ == '__main__':
     fit_bounds = {'t01':(it0-2.,it0+2),'t02':(-3,+3),
                   't03':(-3.,+3),'t04':(-3,+3),
                   's':(0.95,1.05),'hostebv':(0.0,1.0),'hostr_v':(1.0,3.0),
-                  'lensebv1': (0.0,1.0), 'lensebv2': (0.0,1.0), 
-                  'lensebv3': (0.0,1.0), 'lensebv4': (0.0,1.0),
+                  'lensebv1': (0.0,1.0), 'lensebv2': (-0.2,1.0), 
+                  'lensebv3': (-0.2,1.0), 'lensebv4': (-0.2,1.0),
                   #'amplitude1': (1.e+7,1.e+10), 'amplitude2': (1.e+7,1.e+10),
                   #'amplitude3': (1.e+7,1.e+10), 'amplitude4': (1.e+6,1.e+9)}
                   'amplitude1': (1.e-9,1.e-7), 'amplitude2': (1.e-9,1.e-7),
                   'amplitude3': (1.e-9,1.e-7), 'amplitude4': (1.e-10,1.e-8),
-                  'lensr_v':(1.0,3.0), 'f':(1.4,2.0), 'lensr_v1':(1.0,3.0)} 
+                  'lensr_v':(3.0,6.0), 'f':(1.4,2.0), 'lensr_v1':(1.0,3.0)} 
  
     # Start the nestlefit with the hsiao-stretch or the custom_model
     # Save the parameters in 'nestfitparam.dat' and plot the model
@@ -168,17 +169,22 @@ if __name__ == '__main__':
     #MI_geu_source = MI_model(geu_source,4)
     #model,res = nest_lc(phot_d,MI_geu_source,fit_param_16geu,fit_bounds)
     
-    for i, name in enumerate(res.vparam_names):
-        values = res.samples[:,i]
-        plt.plot(np.linspace(0,len(values),num=len(values)),values)
-        plt.ylabel(name)
-        plt.xlabel('sample')
-        plt.savefig('plots/'+name+'_samples.png')
-        plt.close()
-    
+    samples, params  =  res.samples, res.vparam_names
+    u,v = samples[:,params.index('hostebv')],samples[:,params.index('hostr_v')]
+    w,x = samples[:,params.index('lensebv2')],samples[:,params.index('lensr_v')]
+    y,a = samples[:,params.index('f')],samples[:,params.index('lensebv3')]
+    b = samples[:,params.index('lensebv4')]
+    z = np.empty((len(x),7))
+    for i in range(len(x)):
+        z[i] = np.array([u[i],v[i],w[i],x[i],y[i],a[i],b[i]])
+    corner.corner(z, smooth=1, labels=['hostebv','hostr_v','lensebv2','lensr_v','f','lensebv3','lensebv4'])
+    plt.savefig('samples.png')
+    plt.close()
+
+        
     
     df = res.ndof
-    fmin = res.h
+    fmin = min(model.chi)
     x = np.linspace(chi2.ppf(0.01, df), chi2.ppf(0.99, df), 100)
     pdf = chi2.pdf(x, df)
     prob = quad(chi2.pdf,fmin,np.Infinity,args=(df,))[0]
@@ -189,12 +195,19 @@ if __name__ == '__main__':
     plt.plot()
     plt.savefig('chi2_pdf.png')
     plt.close()
+    plt.plot(model.tot_amp,model.chi,'x')
+    plt.ylim(0,1.e+3)
+    plt.title('$chi^2$ with respect to total amplification')
+    plt.xlabel('total amplification')
+    plt.ylabel('$chi^2$')
+    plt.savefig('chi_totamp.png')
+    plt.close()
     
-    totamp, sigmamp = model.plot(phot_d)
+    model.plot(phot_d)
     myfile = open('nestfitparam.dat','w')
     for name in fit_param:
         myfile.write(name+' = '+str(model.get(name))+' ('+str(res.errors[name])+')\n')
     myfile.write("chiqsquare = "+str(fmin)+'\n')
-    myfile.write("tot_amp = "+str(totamp)+' ('+str(sigmamp)+')')
+    myfile.write('total amplification = '+str(model.tot_amp[np.argmin(model.chi)]))
     myfile.close()
     
