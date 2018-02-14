@@ -47,7 +47,7 @@ class MI_model(object):
         self.f = f
         self.useprior = useprior
         self.samerv = samerv
-        
+        self.tot_amp,self.chi = [],[]
         
         for i in range(n):
             self.models.append(copy.copy(model))
@@ -153,8 +153,8 @@ class MI_model(object):
         else:
             self.models[int(name[-1])-1].update({name[:-1]:value})
             
-    def cleanmax(self,band,t,zp,zpsys):
-        ref = copy.copy(self.models[0])
+    def cleanmax(self,band,i,t,zp,zpsys):
+        ref = copy.copy(self.models[i])
         ref.set(hostebv=0.,lensebv=0.0,mwebv=0.)
         return np.max(ref.bandflux(band,t,zp=zp,zpsys=zpsys))
     
@@ -193,9 +193,6 @@ class MI_model(object):
         #totmag=0.
         #mag_array,i = np.zeros(len(ground)),0
         tgrid = np.linspace(tmin,tmax,300)
-        totmag=0.
-        mag_array,i = np.zeros(len(ground)),0
-        tgrid = np.linspace(tmin,tmax,300)
         marker = ['.','o','s','d','^']
         color  = ['k','c','m','g','b']
         for n,band in enumerate(all_bands):
@@ -212,10 +209,6 @@ class MI_model(object):
 
                 if n > 0:
                     model_flux = self.models[n-1].bandflux(band, tgrid, zp=zp, zpsys=zpsys)
-                    if band in ground:
-                        varmag = self.cleanmax(band,tgrid,zp,zpsys)/self.physmax(band,tgrid,zp,zpsys)
-                        totmag += varmag
-                        mag_array[i] += varmag
                     if sum_model_flux is None:
                         sum_model_flux = model_flux
                     else:
@@ -268,9 +261,6 @@ class MI_model(object):
                 else:
                     sigma = np.sum(((d.flux-var(d.time))/d.fluxerr)**2)/(len(d.time))
                 ax.plot(tgrid,sum_model_flux,color=color[0],ls='-')
-            
-            if band in ground: 
-                i += 1
                 
             ax.set_title(band)
             ax.set_xlim((tmin,tmax))
@@ -293,10 +283,6 @@ class MI_model(object):
         fig.savefig('16geu_nestfit.png')
         plt.close()
         
-        mean =  totmag/len(ground)
-        sigmag = np.sqrt(np.sum((mag_array-mean)**2)/(len(ground)-1))
-        
-        return mean,sigmag
         
         
 
@@ -313,7 +299,7 @@ class MI_model(object):
         
             returns chisquare of data and model
             """
-            chi2 = 0.
+            chi2,totmag = 0.,0.
             for imid in range(self.nimg+1):
                 mask = data['imageid'] == imid
                 if not np.any(mask): continue
@@ -327,9 +313,13 @@ class MI_model(object):
                     model_flux = m.bandflux(d.band, d.time, zp=d.zp, zpsys=d.zpsys)
                 else:
                     model_flux = np.zeros(len(d.time))
+                    i = 0
                     for m in self.models:
                         mf = m.bandflux(d.band, d.time, zp=d.zp, zpsys=d.zpsys)
+                        varmag = self.cleanmax(d.band,i,d.time,d.zp,d.zpsys)/self.physmax(d.band,d.time,d.zp,'ab')
+                        totmag += varmag
                         model_flux += mf
+                        i += 1
                     
                 if not np.all(d.fluxerr > 0.):
                     print d.fluxerr
@@ -340,7 +330,8 @@ class MI_model(object):
                 cov = np.diag(d.fluxerr**2) if d.fluxcov is None else d.fluxcov            
                 invcov = np.linalg.inv(cov)            
                 chi2 += np.dot(np.dot(diff, invcov), diff)
-            #print 'chi='+str(chi2)            
+            self.tot_amp.append(totmag)    
+            self.chi.append(chi2)
             return chi2    
 
 def nest_lc(data, model, vparam_names, bounds, guess_amplitude_bound=False,
@@ -579,7 +570,7 @@ def nest_lc(data, model, vparam_names, bounds, guess_amplitude_bound=False,
     
     # estimate parameters and covariance from samples
     vparameters, cov = nestle.mean_and_cov(res.samples, res.weights)
-    print vparam_names,vparameters
+
     # update model parameters to estimated ones.
     for i, name in enumerate(vparam_names):
         model.set(name,vparameters[i])
