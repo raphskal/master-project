@@ -13,8 +13,9 @@ import os
 import time
 from astropy.io import fits
 from numpy.random import randint
+from scipy.interpolate import interp1d
 
-def plot(array,form):
+def plot(array,form,value):
     """
     Plots the histrgram for the microlensing pattern
     
@@ -23,18 +24,22 @@ def plot(array,form):
     array : the 2D array of the microlensing pattern
     form  : amplification or magnification on the axis, choice by user
     """
-    plt.hist(array.flatten(),10)
-    plt.yscale('log')
+    n, bins, patches = plt.hist(array.flatten(),100,normed=1)
+    interp = interp1d(bins[:-1],n)
     if form == 'amp':
         plt.xlabel('amplification')
     elif form == 'magn':
         plt.xlabel('magnification')
-    #plt.xlabel('magnification')
-    plt.ylabel('Counts')
-    plt.title(r'$\mathrm{Microlensing\ Histogram}$')
-    #ax.ticklabel_format(style='sci',axis='both')
+    plt.ylabel('counts/total')
+    plt.plot([value,value],[0,1],'r')
+    plt.ylim(0,max(n))
+    plt.title('Microlensing Histogram for image IV, $\kappa = 0.45,\,\gamma = 0.46$')
     plt.savefig('microlens_histo_'+form+'.png')
     plt.close()
+    try:
+        print interp(value)
+    except ValueError:
+        print 0
     
 def prob(m,pattern,l):
     """
@@ -68,7 +73,7 @@ def prob(m,pattern,l):
         
         
     
-def start(name,form):
+def start(name,form,value):
     """
     Calculates the magnification/amplification of the microlensing pattern. 
     Visualizes the pattern, calls probality and plot function
@@ -79,7 +84,11 @@ def start(name,form):
     form : magnfication or amplification, choice by user. Ratio in magnification
     not yet calculated. Visualisation of pattern only in magnification
     """
-    data = fits.open(name)
+    try:
+        data = fits.open(name)
+    except IOError:
+        print 'Shooting ray could not be initialized with given input.'
+        quit()
     pattern = data[0].data
     data.close()
     length = len(pattern)
@@ -94,16 +103,27 @@ def start(name,form):
                 real_pattern[i,j] = 10**(0.4*(pattern[i][j]-1024.)/256.)
         pixmax = 10**(0.4*(pixmax-1024.)/256.)
         pixmin = 10**(0.4*(pixmin-1024.)/256.)
-        prob(np.array([3.77/0.17,5.8]),real_pattern,length)                    
-        plot(real_pattern,form)
+        #prob(np.array([3.77/0.17,5.8]),real_pattern,length) 
+        plt.imshow(real_pattern,cmap='Spectral')
+        plt.colorbar(label='amplification')
+        plt.title('Mircolensing pattern in amplification')
+        plt.xticks([0.,0.25*length,0.5*length,0.75*length,length],
+                    ['-50','-25','0','25','50'])
+        plt.yticks([0.,0.25*length,0.5*length,0.75*length,length],
+                    ['-50','-25','0','25','50'])
+        plt.xlabel('Einstein radii')
+        plt.ylabel('Einstein radii')
+        plt.savefig('pattern_'+form+'.png')
+        plt.close()                    
+        plot(real_pattern,form,value)
     elif form == 'magn':
         for i in range(0,length):
             for j in range(0,length):
                 pixmax = max(pixmax,pattern[i][j])
                 pixmin = min(pixmin,pattern[i][j])
-                real_pattern[i,j] = -(pattern[i][j]-1024.)/256.
-        pixmax = -(pixmax-1024.)/256.
-        pixmin = -(pixmin-1024.)/256.
+                real_pattern[i,j] = (pattern[i][j]-1024.)/256.
+        pixmax = (pixmax-1024.)/256.
+        pixmin = (pixmin-1024.)/256.
         #prob(np.array([]]),real_pattern,length)
         plt.imshow(real_pattern,cmap='Spectral')
         plt.colorbar(label='magnification')
@@ -116,7 +136,7 @@ def start(name,form):
         plt.ylabel('Einstein radii')
         plt.savefig('pattern_'+form+'.png')
         plt.close()                   
-        plot(real_pattern,form)
+        plot(real_pattern,form,value)
     else:
         print 'form must be amp or magn'
         
@@ -127,8 +147,8 @@ if __name__ == '__main__':
     # Modify the 'input' file in this folder. Then run the script. Choose
     # 'amp' or 'magn' for the form. Make sure name of the file is correct.
     os.popen('./microlens')
-    time.sleep(1)
-    start('IRIS401.fits','amp')
+    time.sleep(2)
+    start('IRIS401.fits','magn',3.01)
     os.remove('IRIS401.fits')
     
     
